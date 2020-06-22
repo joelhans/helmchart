@@ -9,14 +9,14 @@ sd:
   repository: netdata/agent-sd
   tag: latest
   pullPolicy: Always
-  slave:
+  child:
     enabled: true
     configmap:
-      name: netdata-slave-sd-config-map
+      name: netdata-child-sd-config-map
       key: config.yml
       # if 'from' is {} the ConfigMap is not generated
       from:
-        file: sdconfig/slave.yml
+        file: sdconfig/child.yml
         value: {}
     resources: {}
     # limits:
@@ -35,10 +35,10 @@ sysctlImage:
   resources: {}
 
 service:
-  type: ClusterIP
+  type: LoadBalancer
   port: 19999
   # Use a static loadBalancerIP. Only to be used with type LoadBalancer
-  # loadBalancerIP: 10.0.1.69
+  loadBalancerIP: 134.209.140.210
 
 ingress:
   enabled: true
@@ -62,7 +62,7 @@ serviceAccount:
   name: netdata
 
 
-master:
+parent:
   resources: {}
     # limits:
     #  cpu: 4
@@ -156,7 +156,7 @@ master:
         info: random
           to: sysadmin
 
-slave:
+child:
   enabled: true
 
   resources: {}
@@ -195,8 +195,6 @@ slave:
           memory mode = none
         [health]
           enabled = no
-        [plugins]
-          cgroups = no
     stream:
       enabled: true
       path: /etc/netdata/stream.conf
