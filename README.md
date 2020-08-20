@@ -10,7 +10,7 @@ This chart bootstraps a [Netdata](https://github.com/netdata/netdata) deployment
 cluster using the [Helm](https://helm.sh) package manager.
 
 The chart installs a Netdata child pod on each node of a cluster, using a `Daemonset` if not disabled, and a Netdata
-parent pod on one node, using a `Deployment`. The child pods function as headless collectors that collect and forward
+parent pod on one node, using a `Statefulset`. The child pods function as headless collectors that collect and forward
 all the metrics to the parent pod. The parent pod uses persistent volumes to store metrics and alarms, handle alarm
 notifications, and provide the Netdata UI to view metrics using an ingress controller.
 
@@ -67,9 +67,9 @@ The following table lists the configurable parameters of the netdata chart and t
 
 Parameter | Description | Default
 --- | --- | ---
-`replicaCount` | Number of `replicas` for the parent netdata `Deployment` | `1`
+`replicaCount` | Number of `replicas` for the parent netdata `Statefulset` | `1`
 `image.repository` | Container image repo | `netdata/netdata`
-`image.tag` | Container image tag | Latest stable netdata release (e.g. `v1.24.0`)
+`image.tag` | Container image tag | Latest stable netdata release (e.g. `v1.23.1`)
 `image.pullPolicy` | Container image pull policy | `Always`
 `service.type` | netdata parent service type | `ClusterIP`
 `service.port` | netdata parent service port | `19999`
@@ -84,26 +84,22 @@ Parameter | Description | Default
 `serviceAccount.name` | The name of the service account to use. If not set and create is true, a name is generated using the fullname template. | `netdata`
 `clusterrole.name` | Name of the cluster role linked with the service account | `netdata`
 `APIKEY` | The key shared between the parent and the child netdata for streaming | `11111111-2222-3333-4444-555555555555`
-`parent.resources` | Resources for the parent deployment | `{}`
-`parent.nodeSelector` | Node selector for the parent deployment | `{}`
-`parent.tolerations` | Tolerations settings for the parent deployment | `[]`
-`parent.affinity` | Affinity settings for the parent deployment | `{}`
-`parent.priorityClassName` | Pod priority class name for the parent deployment | `""`
+`parent.resources` | Resources for the parent statefulset | `{}`
+`parent.nodeSelector` | Node selector for the parent statefulset | `{}`
+`parent.tolerations` | Tolerations settings for the parent statefulset | `[]`
+`parent.affinity` | Affinity settings for the parent statefulset | `{}`
+`parent.priorityClassName` | Pod priority class name for the parent statefulset | `""`
 `parent.database.persistence` | Whether the parent should use a persistent volume for the DB | `true`
 `parent.database.storageclass` | The storage class for the persistent volume claim of the parent's database store, mounted to `/var/cache/netdata` | the default storage class
 `parent.database.volumesize` | The storage space for the PVC of the parent database | `2Gi`
 `parent.alarms.persistence` | Whether the parent should use a persistent volume for the alarms log | `true`
 `parent.alarms.storageclass` | The storage class for the persistent volume claim of the parent's alarm log, mounted to `/var/lib/netdata` | the default storage class
 `parent.alarms.volumesize` | The storage space for the PVC of the parent alarm log | `100Mi`
-`parent.env` | Set environment parameters for the parent deployment | `{}`
+`parent.env` | Set environment parameters for the parent statefulset | `{}`
 `parent.podLabels` | Additional labels to add to the parent pods | `{}`
 `parent.podAnnotations` | Additional annotations to add to the parent pods | `{}`
 `parent.configs` | Manage custom parent's configs | See [Configuration files](#configuration-files).
-`parent.claiming.enabled` | Enable parent claiming for netdata cloud | `false`
-`parent.claiming.token` | Claim token | `""`
-`parent.claiming.room` | Comma separated list of claim rooms IDs | `""`
 `child.enabled` | Install child daemonset to gather data from nodes | `true`
-`child.updateStrategy` | An update strategy to replace existing DaemonSet pods with new pods | `{}`
 `child.resources` | Resources for the child daemonsets | `{}`
 `child.nodeSelector` | Node selector for the child daemonsets | `{}`
 `child.tolerations` | Tolerations settings for the child daemonsets | `- operator: Exists` with `effect: NoSchedule`
@@ -188,7 +184,9 @@ must be indented with two more spaces relative to the preceding line:
 
 ### Service discovery and supported services
 
-Netdata's [service discovery](https://github.com/netdata/agent-service-discovery/), which is installed as part of the Helm chart installation, finds what services are running on a cluster's pods, converts that into configuration files, and exports them so they can be monitored.
+Netdata's [service discovery](https://github.com/netdata/agent-service-discovery/), which is installed as part of the
+Helm chart installation, finds what services are running on a cluster's pods, converts that into configuration files,
+and exports them so they can be monitored.
 
 Service discovery currently supports the following services via their associated collector:
 
@@ -214,6 +212,32 @@ Service discovery currently supports the following services via their associated
 -   [Unbound](https://learn.netdata.cloud/docs/agent/collectors/go.d.plugin/modules/unbound)
 -   [VerneMQ](https://learn.netdata.cloud/docs/agent/collectors/go.d.plugin/modules/vernemq)
 -   [ZooKeeper](https://learn.netdata.cloud/docs/agent/collectors/go.d.plugin/modules/zookeeper)
+
+#### Configure service discovery
+
+If your cluster runs services on non-default ports or uses non-default names, you may need to configure service
+discovery to start collecting metrics from your services. You have to edit the [default ConfigMap](https://github.com/netdata/helmchart/blob/master/sdconfig/child.yml) that is shipped with the Helmchart and deploy that to your cluster.
+
+First, copy `netdata-helmchart/sdconfig/child.yml` to a new location outside the `netdata-helmchart` directory. The
+destination can be anywhere you like, but the following examples assume it resides next to the `netdata-helmchart`
+directory.
+
+```bash
+cp netdata-helmchart/sdconfig/child.yml .
+```
+
+Edit the new `child.yml` file according to your needs. See the [Helm chart
+configuration](https://github.com/netdata/helmchart#configuration) and the file itself for details. You can then run
+`helm install`/`helm upgrade` with the `--set-file` argument to use your configured `child.yml` file instead of the
+default, changing the path if you copied it elsewhere.
+
+```bash
+helm install --set-file sd.child.configmap.from.value=./child.yml netdata ./netdata-helmchart
+helm upgrade --set-file sd.child.configmap.from.value=./child.yml netdata ./netdata-helmchart
+```
+
+Now that you pushed an edited ConfigMap to your cluster, service discovery should find and set up metrics collection
+from your non-default service.
 
 ### Custom pod labels and annotations
 
